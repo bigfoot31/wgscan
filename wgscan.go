@@ -18,6 +18,8 @@ var nthreads = runtime.NumCPU()
 
 var configFile = "config.json"
 
+var skipDistance = 100
+
 var windowStart = 1950
 var windowWidth = 101
 
@@ -34,10 +36,15 @@ type interfaceConfiguration struct {
 }
 
 func main() {
+	// load configuration
 	configuration := loadConfig()
 
 	goroutinesController := make(chan int, nthreads)
 
+	// for each chromosome in configuration
+	// create a goroutine
+	// number of goroutines controlled by
+	// channel `goroutinesController`
 	for _, val := range configuration {
 		goroutinesController <- 1
 		wg.Add(1)
@@ -64,9 +71,11 @@ func loadConfig() []interfaceConfiguration {
 func driver(val interfaceConfiguration, goroutinesController chan int) {
 	inputArray := readFile(val.File, val.Length)
 
-	avg1 := calcWindowMean(inputArray, windowStart, windowWidth)
-	avg2 := calcWindowMean(inputArray, upstreamStart, upstreamWidth)
-	avg3 := calcWindowMean(inputArray, downstreamStart, downstreamWidth)
+	noCalculations := int(math.Floor(float64(len(inputArray)-4000)/float64(skipDistance))) + 1
+
+	avg1 := calcWindowMean(inputArray, windowStart, windowWidth, noCalculations)
+	avg2 := calcWindowMean(inputArray, upstreamStart, upstreamWidth, noCalculations)
+	avg3 := calcWindowMean(inputArray, downstreamStart, downstreamWidth, noCalculations)
 
 	count := 0
 	results := make([]float64, len(avg1))
@@ -78,7 +87,7 @@ func driver(val interfaceConfiguration, goroutinesController chan int) {
 		}
 	}
 
-	writer(val.Output, results)
+	writeFile(val.Output, results)
 
 	<-goroutinesController
 	wg.Done()
@@ -108,7 +117,7 @@ func readFile(fileName string, size int) []float64 {
 	return inputArray
 }
 
-func writer(fileName string, data []float64) {
+func writeFile(fileName string, data []float64) {
 	file, _ := os.Create(fileName)
 	defer file.Close()
 
@@ -120,18 +129,31 @@ func writer(fileName string, data []float64) {
 	file.WriteString(strings.Trim(strings.Replace(fmt.Sprintf("%.2f", dataFloat32), " ", ",", -1), "[]"))
 }
 
-func calcWindowMean(inputArray []float64, start int, window int) []float64 {
-	end := len(inputArray) - (4001 - start - windowWidth)
-	avg := make([]float64, int(math.Ceil((float64(end-start-windowWidth+1)/float64(windowWidth))))+1)
+func calcWindowMean(inputArray []float64, startIndex int, windowWidth int, noCalculations int) []float64 {
+	// where will the loop end
+	//
+	// for 4000, end = 0
+	// for 4001, end = 0
+	// for 4000+skipDistance, end = 4000
+	endIndex := (noCalculations-1)*skipDistance + startIndex
 
+	// how many values will be outputted
+	//
+	// for 4000, no = 1
+	// for 4001, no = 1
+	// for 4000+skipDistance, no = 2
+	avg := make([]float64, noCalculations)
+
+	// loop from start to end, with skipDistance jump
 	index := 0
-	for i := start; i <= end; i += windowWidth {
+	for i := startIndex; i <= endIndex; i += skipDistance {
 		sum := 0.0
-		for j := i; j < i+window && j < len(inputArray); j++ {
+		// for each skipDistance instance calc avg over windowWidth
+		for j := i; j < i+windowWidth && j < len(inputArray); j++ {
 			sum = sum + inputArray[j]
 		}
 
-		avg[index] = sum / float64(window)
+		avg[index] = sum / float64(windowWidth)
 		index++
 	}
 

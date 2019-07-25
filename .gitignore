@@ -1,2 +1,4 @@
 cmd/config.json
 cmd/wgscan
+test/input/test.tsv.bkp
+cmd/input/*
